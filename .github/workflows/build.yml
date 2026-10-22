@@ -27,7 +27,7 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
-      - name: Build firmware (no private config.h in CI: settings come from the SD card)
+      - name: "Build firmware (no private config.h in CI: settings come from the SD card)"
         run: |
           test ! -f src/config.h
           pio run -e cardputer
