@@ -1,0 +1,78 @@
+# gencord pipeline - Portainer stack (or: docker compose up -d --build)
+#
+# Synology folders are mounted as SMB (CIFS) volumes; set SMB_USER / SMB_PASS
+# (a user with read/write on the recordings and the Obsidian folder) in the stack's
+# environment variables, see .env.example.
+#
+# Summaries come from LM Studio on this PC (OpenAI API on port 1234) by default.
+# Without LM Studio: set LLM_API=ollama, LLM_MODEL=qwen2.5:7b and start with
+# `docker compose --profile ollama up -d`.
+
+services:
+  pipeline:
+    build: .
+    image: gencord-pipeline:latest
+    container_name: gencord-pipeline
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - LLM_API=${LLM_API:-openai}
+      - OPENAI_URL=${OPENAI_URL:-http://host.docker.internal:1234/v1}
+      - OLLAMA_URL=http://ollama:11434
+      - LLM_MODEL=${LLM_MODEL:-qwen3.5-9b}
+      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3-turbo}
+      - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-de}
+      - WHISPER_PROMPT=${WHISPER_PROMPT:-}
+      - NOTES_DIR=${NOTES_DIR:-Recordings}
+      - RECORDINGS_UNC=${RECORDINGS_UNC:-}
+      - NOTE_LANGUAGE=${NOTE_LANGUAGE:-Deutsch}
+      - WORDLIST=${WORDLIST:-Recordings/_Wortliste.md}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - MAX_SPEAKERS=${MAX_SPEAKERS:-8}
+      - POLL_SECONDS=${POLL_SECONDS:-60}
+    volumes:
+      - recordings:/recordings
+      - vault:/vault
+      - whisper_models:/models
+      - hf_cache:/root/.cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:0.5.7
+    container_name: gencord-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  hf_cache:
+  ollama_models:
+  whisper_models:
+  recordings:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//${NAS_IP:?set NAS_IP in .env}/${RECORDINGS_SHARE:?set RECORDINGS_SHARE in .env}"
+      o: "addr=${NAS_IP:?set NAS_IP in .env},username=${SMB_USER},password=${SMB_PASS},vers=3.0,uid=0,gid=0,file_mode=0664,dir_mode=0775"
+  vault:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//${NAS_IP:?set NAS_IP in .env}/${VAULT_SHARE:?set VAULT_SHARE in .env}"
+      o: "addr=${NAS_IP:?set NAS_IP in .env},username=${SMB_USER},password=${SMB_PASS},vers=3.0,uid=0,gid=0,file_mode=0664,dir_mode=0775"
+

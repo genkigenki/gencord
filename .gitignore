@@ -1,0 +1,6 @@
+.pio/
+src/config.h
+
+*.bin
+pipeline/.env
+__pycache__/

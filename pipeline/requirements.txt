@@ -1,0 +1,8 @@
+faster-whisper==1.1.1
+requests==2.32.3
+# speaker separation (only used when HF_TOKEN is set); pins keep pyannote 3.3 working
+pyannote.audio==3.3.2
+torch==2.4.1
+torchaudio==2.4.1
+numpy<2
+huggingface_hub<0.26

@@ -1,0 +1,65 @@
+name: build
+
+# Every push compiles the firmware. A version tag (v*) also publishes a release with
+# both install images and, once the listing exists, a new M5Burner version.
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:  # job level, so the M5Burner step's `if` can see them
+      M5BURNER_USER: ${{ secrets.M5BURNER_USER }}
+      M5BURNER_FID: ${{ vars.M5BURNER_FID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build firmware (no private config.h in CI: settings come from the SD card)
+        run: |
+          test ! -f src/config.h
+          pio run -e cardputer
+          # factory image = bootloader 0x0 + partitions 0x8000 + otadata 0xe000 + app 0x10000
+          cp .pio/build/cardputer/firmware.factory.bin gencord.full.bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gencord
+          path: |
+            gencord.bin
+            gencord.full.bin
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            gencord.bin
+            gencord.full.bin
+          # Edit docs/RELEASE_NOTES.md and commit it before tagging the next release.
+          body_path: docs/RELEASE_NOTES.md
+
+      # Push the release to M5Burner, which mirrors into LauncherHub. Runs only when the
+      # secrets M5BURNER_USER / M5BURNER_PWD (M5Stack community account) and the variable
+      # M5BURNER_FID (id of the listing, created once by hand in the M5Burner app) are set.
+      - name: Publish to M5Burner
+        if: startsWith(github.ref, 'refs/tags/v') && env.M5BURNER_USER != '' && env.M5BURNER_FID != ''
+        env:
+          M5BURNER_PWD: ${{ secrets.M5BURNER_PWD }}
+        run: |
+          python3 -m pip install --quiet requests
+          python3 tools/m5burner_post.py \
+            --user "$M5BURNER_USER" --password "$M5BURNER_PWD" \
+            --tag "${GITHUB_REF_NAME}" --artifacts-dir .
